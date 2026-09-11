@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aloud — read your PDFs to you</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink: #12151b;
+    --ink-2: #1b2029;
+    --ink-3: #262c38;
+    --paper: #ece7d9;
+    --paper-dim: #8b93a3;
+    --amber: #f2b441;
+    --amber-dim: #4a3c1e;
+    --teal: #6fa8b5;
+    --danger: #d97066;
+    --radius: 10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 16px;
+    border-bottom:1px solid var(--ink-3);
+    flex-shrink:0;
+  }
+  header .brand{
+    font-family:'Fraunces', serif;
+    font-optical-sizing:auto;
+    font-weight:600;
+    font-size:20px;
+    letter-spacing:0.2px;
+  }
+  header .brand span{ color: var(--amber); }
+  header .icon-btn{
+    background:none;
+    border:1px solid var(--ink-3);
+    color:var(--paper);
+    width:38px;
+    height:38px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    font-size:16px;
+  }
+  header .icon-btn:active{ background:var(--ink-3); }
+
+  main{
+    flex:1;
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:16px 12px 12px;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  /* Empty / upload state */
+  #dropZone{
+    width:100%;
+    max-width:520px;
+    margin-top:8vh;
+    border:1.5px dashed var(--ink-3);
+    border-radius:var(--radius);
+    padding:48px 24px;
+    text-align:center;
+    cursor:pointer;
+  }
+  #dropZone.drag{ border-color:var(--amber); background:var(--ink-2); }
+  #dropZone h1{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    font-size:26px;
+    margin:0 0 10px;
+  }
+  #dropZone p{
+    color:var(--paper-dim);
+    font-size:14px;
+    line-height:1.5;
+    margin:0;
+  }
+  #dropZone .mark{
+    width:44px; height:44px;
+    border-radius:50%;
+    background:var(--ink-2);
+    display:flex; align-items:center; justify-content:center;
+    margin:0 auto 18px;
+    font-size:20px;
+  }
+  #fileInput{ display:none; }
+
+  /* Document view */
+  #docWrap{
+    display:none;
+    width:100%;
+    max-width:720px;
+    flex-direction:column;
+    align-items:center;
+  }
+  #pageMeta{
+    color:var(--paper-dim);
+    font-size:13px;
+    margin-bottom:10px;
+    display:flex;
+    gap:10px;
+    align-items:center;
+  }
+  #resumeBanner{
+    display:none;
+    width:100%;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    background:var(--ink-2);
+    border:1px solid var(--ink-3);
+    border-radius:8px;
+    padding:10px 12px;
+    margin-bottom:12px;
+    font-size:13px;
+  }
+  #resumeBanner.show{ display:flex; }
+  #resumeBtns{ display:flex; gap:8px; flex-shrink:0; }
+  #resumeBtns button{
+    border:none;
+    border-radius:6px;
+    padding:7px 12px;
+    font-size:12.5px;
+    font-family:inherit;
+    cursor:pointer;
+  }
+  #resumeBtn{ background:var(--amber); color:var(--ink); font-weight:600; }
+  #dismissResumeBtn{ background:none; color:var(--paper-dim); }
+  #pageStage{
+    position:relative;
+    background:var(--paper);
+    border-radius:6px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.35);
+    overflow:hidden;
+    touch-action: pan-y;
+  }
+  #pdfCanvas{ display:block; }
+  #textLayer{
+    position:absolute;
+    top:0; left:0;
+    line-height:1;
+    user-select:text;
+  }
+  #textLayer span.pdfword{
+    position:absolute;
+    white-space:pre;
+    color:transparent;
+    cursor:pointer;
+    border-radius:3px;
+  }
+  #textLayer span.pdfword.reading{
+    background:var(--amber);
+    color:transparent;
+    box-shadow:0 0 0 2px var(--amber);
+  }
+
+  /* Bottom player */
+  #player{
+    flex-shrink:0;
+    border-top:1px solid var(--ink-3);
+    background:var(--ink-2);
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    display:none;
+  }
+  #player.show{ display:block; }
+  #progressRow{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:11px;
+    color:var(--paper-dim);
+    margin-bottom:8px;
+  }
+  #progressBar{
+    flex:1;
+    height:4px;
+    background:var(--ink-3);
+    border-radius:2px;
+    overflow:hidden;
+  }
+  #progressFill{
+    height:100%;
+    width:0%;
+    background:var(--amber);
+  }
+  #controlsRow{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:22px;
+  }
+  .ctrl-btn{
+    background:none;
+    border:none;
+    color:var(--paper);
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .ctrl-btn svg{ width:22px; height:22px; }
+  #playBtn{
+    width:56px; height:56px;
+    border-radius:50%;
+    background:var(--amber);
+    color:var(--ink);
+  }
+  #playBtn svg{ width:24px; height:24px; }
+  #rateBtn{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:13px;
+    font-weight:600;
+    border:1px solid var(--ink-3);
+    border-radius:20px;
+    padding:6px 12px;
+    color:var(--paper);
+    background:none;
+  }
+
+  /* Settings sheet */
+  #overlay{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.5);
+    display:none;
+    z-index:10;
+  }
+  #overlay.show{ display:block; }
+  #sheet{
+    position:fixed;
+    left:0; right:0; bottom:0;
+    background:var(--ink-2);
+    border-radius:16px 16px 0 0;
+    padding:20px 20px calc(24px + env(safe-area-inset-bottom));
+    max-height:80vh;
+    overflow-y:auto;
+    transform:translateY(100%);
+    transition:transform 0.25s ease;
+    z-index:11;
+  }
+  #sheet.show{ transform:translateY(0); }
+  #sheet h2{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    font-size:19px;
+    margin:0 0 4px;
+  }
+  #sheet .hint{ color:var(--paper-dim); font-size:12.5px; line-height:1.5; margin:0 0 18px;}
+  .field{ margin-bottom:16px; }
+  .field label{
+    display:block;
+    font-size:12px;
+    font-weight:600;
+    color:var(--paper-dim);
+    margin-bottom:6px;
+  }
+  .field select, .field input{
+    width:100%;
+    background:var(--ink);
+    border:1px solid var(--ink-3);
+    color:var(--paper);
+    padding:10px 12px;
+    border-radius:8px;
+    font-size:14px;
+    font-family:inherit;
+  }
+  .engine-toggle{
+    display:flex;
+    background:var(--ink);
+    border-radius:8px;
+    padding:3px;
+    gap:3px;
+  }
+  .engine-toggle button{
+    flex:1;
+    border:none;
+    background:none;
+    color:var(--paper-dim);
+    padding:9px 8px;
+    border-radius:6px;
+    font-size:13px;
+    font-family:inherit;
+    cursor:pointer;
+  }
+  .engine-toggle button.active{
+    background:var(--ink-3);
+    color:var(--paper);
+  }
+  #elevenFields{ display:none; }
+  #elevenFields.show{ display:block; }
+  .small-btn{
+    background:var(--ink-3);
+    border:none;
+    color:var(--paper);
+    padding:9px 14px;
+    border-radius:8px;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .note{
+    font-size:12px;
+    color:var(--paper-dim);
+    line-height:1.5;
+    background:var(--ink);
+    border:1px solid var(--ink-3);
+    border-radius:8px;
+    padding:10px 12px;
+    margin-top:4px;
+  }
+  #closeSheet{
+    display:block;
+    width:100%;
+    margin-top:6px;
+    background:var(--amber);
+    color:var(--ink);
+    border:none;
+    padding:12px;
+    border-radius:8px;
+    font-weight:600;
+    font-size:14px;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Aloud<span>.</span></div>
+  <button class="icon-btn" id="settingsBtn" title="Voice settings" aria-label="Voice settings">⚙</button>
+</header>
+
+<main>
+  <div id="dropZone">
+    <div class="mark">📖</div>
+    <h1>Bring a PDF to life</h1>
+    <p>Tap to choose a PDF, or drop one here. Aloud reads it back to you and highlights along as it goes — pick up where you left off, page by page.</p>
+    <input type="file" id="fileInput" accept="application/pdf">
+  </div>
+
+  <div id="docWrap">
+    <div id="resumeBanner">
+      <span id="resumeText"></span>
+      <div id="resumeBtns">
+        <button id="resumeBtn">Resume</button>
+        <button id="dismissResumeBtn">Start over</button>
+      </div>
+    </div>
+    <div id="pageMeta">
+      <span id="pageLabel">Page 1 of 1</span>
+    </div>
+    <div id="pageStage">
+      <canvas id="pdfCanvas"></canvas>
+      <div id="textLayer"></div>
+    </div>
+  </div>
+</main>
+
+<div id="player">
+  <div id="progressRow">
+    <span id="pageNowLabel">–</span>
+    <div id="progressBar"><div id="progressFill"></div></div>
+    <span id="engineLabel">Built-in voice</span>
+  </div>
+  <div id="controlsRow">
+    <button class="ctrl-btn" id="prevBtn" title="Previous page" aria-label="Previous page">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+    </button>
+    <button class="ctrl-btn" id="playBtn" title="Play" aria-label="Play">
+      <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button class="ctrl-btn" id="nextBtn" title="Next page" aria-label="Next page">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
+    </button>
+    <button id="rateBtn" title="Playback speed">1.0×</button>
+  </div>
+</div>
+
+<div id="overlay"></div>
+<div id="sheet">
+  <h2>Document</h2>
+  <div class="field">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span id="currentDocLabel" style="font-size:13px; color:var(--paper-dim); flex:1;">No PDF loaded</span>
+      <button class="small-btn" id="swapPdfBtn" type="button">Choose PDF</button>
+    </div>
+  </div>
+
+  <h2 style="margin-top:22px;">Voice</h2>
+  <p class="hint">Choose how Aloud sounds. The built-in voice works instantly with no setup. A premium voice sounds more natural and keeps playing with your phone locked — but needs your own API key.</p>
+
+  <div class="field">
+    <div class="engine-toggle">
+      <button id="engineBrowserBtn" class="active">Built-in (free)</button>
+      <button id="engineElevenBtn">Premium (your key)</button>
+    </div>
+  </div>
+
+  <div class="field" id="browserVoiceField">
+    <label for="voiceSelect">Voice</label>
+    <select id="voiceSelect"></select>
+  </div>
+
+  <div id="elevenFields">
+    <div class="field">
+      <label for="elevenKey">ElevenLabs API key</label>
+      <input type="password" id="elevenKey" placeholder="Paste your key — stored only on this device">
+    </div>
+    <div class="field">
+      <label for="elevenVoice">Voice</label>
+      <select id="elevenVoiceSelect"></select>
+      <div style="margin-top:8px;">
+        <button class="small-btn" id="loadVoicesBtn" type="button">Load my voices</button>
+      </div>
+    </div>
+    <p class="note">Your key is saved only in this browser (localStorage) and is sent directly from your phone to ElevenLabs — it never passes through any server of mine. Each page read uses your ElevenLabs credits.</p>
+  </div>
+
+  <button id="closeSheet">Done</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  // ---------- config ----------
+  // To bundle a fixed PDF with the site (so it loads automatically, no
+  // upload needed each time), put a file at assets/book.pdf in this repo
+  // and leave this as-is. Set to "" to always show the upload screen.
+  var BUNDLED_PDF_PATH = "assets/book.pdf";
+
+  // ---------- state ----------
+  var state = {
+    pdfDoc: null,
+    numPages: 0,
+    pageNum: 1,
+    words: [],          // current page's word objects {el, text, start, end}
+    flatText: "",        // current page's flat text (matches spoken text)
+    engine: localStorage.getItem("aloud_engine") || "browser",
+    voices: [],
+    selectedVoiceName: localStorage.getItem("aloud_voice") || "",
+    rate: parseFloat(localStorage.getItem("aloud_rate") || "1"),
+    isPlaying: false,
+    utterance: null,
+    charOffsetBase: 0,   // when jumping mid-page for browser engine
+    audioEl: new Audio(),
+    elevenAlignment: null,
+    docTitle: "Your PDF",
+    docId: null,          // identifies the open PDF, for bookmarking
+    currentWordIdx: -1
+  };
+
+  var rates = [0.75, 1, 1.25, 1.5, 1.75, 2];
+
+  // ---------- elements ----------
+  var dropZone = document.getElementById("dropZone");
+  var fileInput = document.getElementById("fileInput");
+  var docWrap = document.getElementById("docWrap");
+  var canvas = document.getElementById("pdfCanvas");
+  var ctx = canvas.getContext("2d");
+  var textLayer = document.getElementById("textLayer");
+  var pageStage = document.getElementById("pageStage");
+  var pageLabel = document.getElementById("pageLabel");
+  var pageNowLabel = document.getElementById("pageNowLabel");
+  var player = document.getElementById("player");
+  var playBtn = document.getElementById("playBtn");
+  var playIcon = document.getElementById("playIcon");
+  var prevBtn = document.getElementById("prevBtn");
+  var nextBtn = document.getElementById("nextBtn");
+  var rateBtn = document.getElementById("rateBtn");
+  var progressFill = document.getElementById("progressFill");
+  var engineLabel = document.getElementById("engineLabel");
+
+  var settingsBtn = document.getElementById("settingsBtn");
+  var overlay = document.getElementById("overlay");
+  var sheet = document.getElementById("sheet");
+  var closeSheet = document.getElementById("closeSheet");
+  var engineBrowserBtn = document.getElementById("engineBrowserBtn");
+  var engineElevenBtn = document.getElementById("engineElevenBtn");
+  var browserVoiceField = document.getElementById("browserVoiceField");
+  var elevenFields = document.getElementById("elevenFields");
+  var voiceSelect = document.getElementById("voiceSelect");
+  var elevenKeyInput = document.getElementById("elevenKey");
+  var elevenVoiceSelect = document.getElementById("elevenVoiceSelect");
+  var loadVoicesBtn = document.getElementById("loadVoicesBtn");
+  var swapPdfBtn = document.getElementById("swapPdfBtn");
+  var currentDocLabel = document.getElementById("currentDocLabel");
+  var resumeBanner = document.getElementById("resumeBanner");
+  var resumeText = document.getElementById("resumeText");
+  var resumeBtn = document.getElementById("resumeBtn");
+  var dismissResumeBtn = document.getElementById("dismissResumeBtn");
+
+  var PLAY_ICON = '<path d="M8 5v14l11-7z"/>';
+  var PAUSE_ICON = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+
+  // ---------- upload ----------
+  dropZone.addEventListener("click", function(){ fileInput.click(); });
+  fileInput.addEventListener("change", function(e){
+    if (e.target.files[0]) loadPdf(e.target.files[0]);
+  });
+  ["dragover","dragenter"].forEach(function(ev){
+    dropZone.addEventListener(ev, function(e){ e.preventDefault(); dropZone.classList.add("drag"); });
+  });
+  ["dragleave","drop"].forEach(function(ev){
+    dropZone.addEventListener(ev, function(e){ e.preventDefault(); dropZone.classList.remove("drag"); });
+  });
+  dropZone.addEventListener("drop", function(e){
+    var f = e.dataTransfer.files[0];
+    if (f && f.type === "application/pdf") loadPdf(f);
+  });
+
+  function loadPdf(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      openPdfFromBytes(new Uint8Array(this.result), file.name);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function tryLoadBundledPdf(){
+    if (!BUNDLED_PDF_PATH) return;
+    fetch(BUNDLED_PDF_PATH).then(function(res){
+      if (!res.ok) throw new Error("no bundled pdf");
+      return res.arrayBuffer();
+    }).then(function(buf){
+      openPdfFromBytes(new Uint8Array(buf), BUNDLED_PDF_PATH.split("/").pop());
+    }).catch(function(){
+      // no bundled PDF found — just leave the upload screen showing
+    });
+  }
+
+  function openPdfFromBytes(typedArray, sourceName){
+    pdfjsLib.getDocument({ data: typedArray }).promise.then(function(doc){
+      state.pdfDoc = doc;
+      state.numPages = doc.numPages;
+      state.docTitle = (sourceName || "Your PDF").replace(/\.pdf$/i, "");
+      state.docId = (sourceName || "doc") + "-" + doc.numPages;
+      currentDocLabel.textContent = state.docTitle;
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: state.docTitle, artist: "Aloud" });
+      }
+      dropZone.style.display = "none";
+      docWrap.style.display = "flex";
+      player.classList.add("show");
+
+      var bookmark = loadBookmark(state.docId);
+      if (bookmark && bookmark.page) {
+        resumeText.textContent = "Continue from page " + bookmark.page + "?";
+        resumeBanner.classList.add("show");
+        resumeBtn.onclick = function(){
+          resumeBanner.classList.remove("show");
+          resumeFromBookmark(bookmark);
+        };
+        dismissResumeBtn.onclick = function(){
+          resumeBanner.classList.remove("show");
+          renderPage(1);
+        };
+      } else {
+        renderPage(1);
+      }
+    }).catch(function(err){
+      alert("Couldn't open that PDF: " + err.message);
+      dropZone.style.display = "block";
+    });
+  }
+
+  function resumeFromBookmark(bookmark){
+    renderPage(bookmark.page);
+    var attempts = 0;
+    var check = setInterval(function(){
+      attempts++;
+      if (state.words.length || attempts > 50) {
+        clearInterval(check);
+        if (typeof bookmark.wordIdx === "number" && state.words[bookmark.wordIdx]) {
+          setActiveByIndex(bookmark.wordIdx);
+          state.charOffsetBase = state.words[bookmark.wordIdx].start;
+        }
+      }
+    }, 120);
+  }
+
+  // ---------- bookmarking ----------
+  function saveBookmark(){
+    if (!state.docId) return;
+    try {
+      localStorage.setItem("aloud_bookmark_" + state.docId, JSON.stringify({
+        page: state.pageNum,
+        wordIdx: state.currentWordIdx >= 0 ? state.currentWordIdx : 0,
+        savedAt: Date.now()
+      }));
+    } catch (e) { /* storage unavailable — just skip saving */ }
+  }
+
+  function loadBookmark(docId){
+    try {
+      var raw = localStorage.getItem("aloud_bookmark_" + docId);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  // save periodically while reading, and whenever the page is about to
+  // be left (covers "close the tab/switch apps on my phone")
+  setInterval(function(){ if (state.isPlaying) saveBookmark(); }, 5000);
+  document.addEventListener("visibilitychange", function(){
+    if (document.hidden) saveBookmark();
+  });
+  window.addEventListener("pagehide", saveBookmark);
+  window.addEventListener("beforeunload", saveBookmark);
+
+  swapPdfBtn.addEventListener("click", function(){ fileInput.click(); });
+
+  // ---------- rendering + text layer ----------
+  function computeScale(page){
+    var maxWidth = Math.min(pageStage.parentElement.clientWidth || 720, 720);
+    var viewport1 = page.getViewport({ scale: 1 });
+    return maxWidth / viewport1.width;
+  }
+
+  function renderPage(num){
+    stopSpeaking();
+    state.pageNum = num;
+    state.currentWordIdx = -1;
+    pageLabel.textContent = "Page " + num + " of " + state.numPages;
+    pageNowLabel.textContent = num + " / " + state.numPages;
+    saveBookmark();
+
+    state.pdfDoc.getPage(num).then(function(page){
+      var scale = computeScale(page);
+      var viewport = page.getViewport({ scale: scale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      pageStage.style.width = viewport.width + "px";
+      pageStage.style.height = viewport.height + "px";
+      textLayer.style.width = viewport.width + "px";
+      textLayer.style.height = viewport.height + "px";
+      textLayer.innerHTML = "";
+
+      page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function(){
+        return page.getTextContent();
+      }).then(function(textContent){
+        buildWordLayer(textContent, viewport);
+        progressFill.style.width = "0%";
+      });
+    });
+
+    prevBtn.disabled = num <= 1;
+    nextBtn.disabled = num >= state.numPages;
+  }
+
+  function buildWordLayer(textContent, viewport){
+    var words = [];
+    var flat = "";
+
+    textContent.items.forEach(function(item){
+      if (!item.str || !item.str.trim()) { return; }
+      var tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+      var fontHeight = Math.hypot(tx[2], tx[3]);
+      var pixelWidth = (item.width || 0) * viewport.scale;
+      var totalChars = item.str.length || 1;
+
+      var parts = item.str.split(/(\s+)/);
+      var cursor = 0;
+      parts.forEach(function(part){
+        if (!part) return;
+        var partWidth = pixelWidth * (part.length / totalChars);
+        if (part.trim().length) {
+          var left = tx[4] + cursor;
+          var top = tx[5] - fontHeight;
+          var span = document.createElement("span");
+          span.className = "pdfword";
+          span.textContent = part;
+          span.style.left = left + "px";
+          span.style.top = top + "px";
+          span.style.fontSize = fontHeight + "px";
+          span.style.width = Math.max(partWidth, 2) + "px";
+          span.addEventListener("click", (function(w){
+            return function(){ jumpToWord(w); };
+          })(words.length));
+          textLayer.appendChild(span);
+
+          var start = flat.length;
+          flat += part;
+          words.push({ el: span, text: part, start: start, end: flat.length });
+          flat += " ";
+        }
+        cursor += partWidth;
+      });
+    });
+
+    state.words = words;
+    state.flatText = flat.trim();
+  }
+
+  // ---------- highlighting ----------
+  var activeWordEl = null;
+  function setActiveByIndex(idx){
+    if (activeWordEl) activeWordEl.classList.remove("reading");
+    var w = state.words[idx];
+    if (!w) return;
+    w.el.classList.add("reading");
+    activeWordEl = w.el;
+    state.currentWordIdx = idx;
+    w.el.scrollIntoView({ block: "center", behavior: "smooth" });
+    progressFill.style.width = (100 * (idx + 1) / state.words.length) + "%";
+  }
+
+  function findWordIndexAtChar(charIndex){
+    for (var i = 0; i < state.words.length; i++){
+      if (charIndex >= state.words[i].start && charIndex < state.words[i].end) return i;
+    }
+    // fall back to nearest
+    for (var j = state.words.length - 1; j >= 0; j--){
+      if (state.words[j].start <= charIndex) return j;
+    }
+    return 0;
+  }
+
+  function jumpToWord(idx){
+    var w = state.words[idx];
+    if (!w) return;
+    setActiveByIndex(idx);
+    if (state.engine === "browser") {
+      state.charOffsetBase = w.start;
+      speakBrowser(state.flatText.slice(w.start));
+    } else {
+      if (state.elevenAlignment) {
+        var t = timeForChar(w.start);
+        state.audioEl.currentTime = t;
+        if (state.audioEl.paused) state.audioEl.play();
+      }
+    }
+    setPlayingUI(true);
+  }
+
+  // ---------- browser TTS ----------
+  function loadVoices(){
+    state.voices = speechSynthesis.getVoices();
+    voiceSelect.innerHTML = "";
+    state.voices.forEach(function(v, i){
+      var opt = document.createElement("option");
+      opt.value = v.name;
+      opt.textContent = v.name + " (" + v.lang + ")" + (v.localService ? "" : " — online");
+      voiceSelect.appendChild(opt);
+    });
+    var preferred = state.voices.find(function(v){ return v.name === state.selectedVoiceName; });
+    if (!preferred) {
+      // pick a nice-sounding default: prefer "Enhanced"/"Natural"/"Premium" or Google voices
+      preferred = state.voices.find(function(v){ return /enhanced|natural|premium|neural/i.test(v.name); }) ||
+                  state.voices.find(function(v){ return /Google/.test(v.name) && /en/i.test(v.lang); }) ||
+                  state.voices.find(function(v){ return /en/i.test(v.lang); }) ||
+                  state.voices[0];
+    }
+    if (preferred) {
+      voiceSelect.value = preferred.name;
+      state.selectedVoiceName = preferred.name;
+    }
+  }
+  if ("speechSynthesis" in window) {
+    speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+  }
+
+  function speakBrowser(text){
+    speechSynthesis.cancel();
+    var utt = new SpeechSynthesisUtterance(text);
+    var v = state.voices.find(function(v){ return v.name === state.selectedVoiceName; });
+    if (v) utt.voice = v;
+    utt.rate = state.rate;
+    utt.onboundary = function(e){
+      if (e.name === "word" || e.charIndex !== undefined) {
+        var idx = findWordIndexAtChar(state.charOffsetBase + e.charIndex);
+        setActiveByIndex(idx);
+      }
+    };
+    utt.onend = function(){
+      if (state.isPlaying) advancePageAndContinue();
+    };
+    state.utterance = utt;
+    speechSynthesis.speak(utt);
+  }
+
+  // ---------- ElevenLabs TTS ----------
+  function timeForChar(charIndex){
+    if (!state.elevenAlignment) return 0;
+    var chars = state.elevenAlignment.characters;
+    var starts = state.elevenAlignment.character_start_times_seconds;
+    var lo = 0, hi = chars.length - 1;
+    if (hi < 0) return 0;
+    while (lo < hi) {
+      var mid = (lo + hi + 1) >> 1;
+      if (mid < charIndex) lo = mid; else hi = mid - 1;
+    }
+    return starts[Math.min(lo, starts.length - 1)] || 0;
+  }
+
+  function speakEleven(text){
+    var key = elevenKeyInput.value.trim();
+    var voiceId = elevenVoiceSelect.value.trim() || "21m00Tcm4TlvDq8ikWAM"; // default: ElevenLabs' public "Rachel" voice
+    if (!key) {
+      alert("Add your ElevenLabs API key in Voice settings first.");
+      openSheet();
+      return;
+    }
+    engineLabel.textContent = "Loading premium voice…";
+    fetch("https://api.elevenlabs.io/v1/text-to-speech/" + voiceId + "/with-timestamps", {
+      method: "POST",
+      headers: {
+        "xi-api-key": key,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: text,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+      })
+    }).then(function(res){
+      if (!res.ok) throw new Error("ElevenLabs error " + res.status);
+      return res.json();
+    }).then(function(data){
+      state.elevenAlignment = data.alignment || data.normalized_alignment;
+      var blobUrl = base64ToBlobUrl(data.audio_base64);
+      state.audioEl.src = blobUrl;
+      state.audioEl.playbackRate = state.rate;
+      state.audioEl.play();
+      engineLabel.textContent = "Premium voice";
+    }).catch(function(err){
+      alert("Couldn't reach ElevenLabs: " + err.message + "\nCheck your API key and voice ID in settings, or switch to the built-in voice.");
+      setPlayingUI(false);
+      engineLabel.textContent = "Built-in voice";
+    });
+  }
+
+  function base64ToBlobUrl(b64, mime){
+    mime = mime || "audio/mpeg";
+    var byteChars = atob(b64);
+    var byteNumbers = new Array(byteChars.length);
+    for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+    var byteArray = new Uint8Array(byteNumbers);
+    var blob = new Blob([byteArray], { type: mime });
+    return URL.createObjectURL(blob);
+  }
+
+  state.audioEl.addEventListener("timeupdate", function(){
+    if (!state.elevenAlignment) return;
+    var t = state.audioEl.currentTime;
+    var starts = state.elevenAlignment.character_start_times_seconds;
+    var lo = 0, hi = starts.length - 1;
+    while (lo < hi) {
+      var mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= t) lo = mid; else hi = mid - 1;
+    }
+    setActiveByIndex(findWordIndexAtChar(lo));
+  });
+  state.audioEl.addEventListener("ended", function(){
+    if (state.isPlaying) advancePageAndContinue();
+  });
+
+  // ---------- playback control ----------
+  function setPlayingUI(playing){
+    state.isPlaying = playing;
+    playIcon.innerHTML = playing ? PAUSE_ICON : PLAY_ICON;
+    playBtn.title = playing ? "Pause" : "Play";
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+    }
+  }
+
+  function startReading(){
+    if (!state.flatText) return;
+    setPlayingUI(true);
+    if (state.engine === "browser") {
+      state.charOffsetBase = 0;
+      speakBrowser(state.flatText);
+    } else {
+      speakEleven(state.flatText);
+    }
+  }
+
+  function pauseReading(){
+    setPlayingUI(false);
+    saveBookmark();
+    if (state.engine === "browser") {
+      speechSynthesis.pause();
+    } else {
+      state.audioEl.pause();
+    }
+  }
+
+  function resumeReading(){
+    setPlayingUI(true);
+    if (state.engine === "browser") {
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      else speakBrowser(state.flatText.slice(state.charOffsetBase));
+    } else {
+      state.audioEl.play();
+    }
+  }
+
+  function stopSpeaking(){
+    speechSynthesis.cancel();
+    state.audioEl.pause();
+    state.elevenAlignment = null;
+    setPlayingUI(false);
+    if (activeWordEl) { activeWordEl.classList.remove("reading"); activeWordEl = null; }
+  }
+
+  function advancePageAndContinue(){
+    if (state.pageNum < state.numPages) {
+      renderPage(state.pageNum + 1);
+      // renderPage's text layer builds asynchronously; wait for it, then continue
+      var attempts = 0;
+      var check = setInterval(function(){
+        attempts++;
+        if (state.words.length || attempts > 50) {
+          clearInterval(check);
+          state.isPlaying = true;
+          startReading();
+        }
+      }, 120);
+    } else {
+      setPlayingUI(false);
+    }
+  }
+
+  playBtn.addEventListener("click", function(){
+    if (!state.flatText) return;
+    if (state.isPlaying) {
+      pauseReading();
+      return;
+    }
+    var hasPausedBrowserSpeech = state.engine === "browser" && speechSynthesis.paused;
+    var hasPausedAudio = state.engine === "eleven" && state.audioEl.currentTime > 0 && state.audioEl.src;
+    if (hasPausedBrowserSpeech || hasPausedAudio) {
+      resumeReading();
+    } else {
+      startReading();
+    }
+  });
+
+  prevBtn.addEventListener("click", function(){
+    if (state.pageNum > 1) renderPage(state.pageNum - 1);
+  });
+  nextBtn.addEventListener("click", function(){
+    if (state.pageNum < state.numPages) renderPage(state.pageNum + 1);
+  });
+
+  rateBtn.addEventListener("click", function(){
+    var idx = rates.indexOf(state.rate);
+    idx = (idx + 1) % rates.length;
+    state.rate = rates[idx];
+    localStorage.setItem("aloud_rate", state.rate);
+    rateBtn.textContent = state.rate.toFixed(2).replace(/0$/,"").replace(/\.$/,".0") + "×";
+    state.audioEl.playbackRate = state.rate;
+    if (state.isPlaying && state.engine === "browser") {
+      // speechSynthesis has no live rate change, so restart the current
+      // sentence from the word being read now, at the new rate
+      var current = state.words[state.currentWordIdx];
+      state.charOffsetBase = current ? current.start : state.charOffsetBase;
+      speakBrowser(state.flatText.slice(state.charOffsetBase));
+    }
+  });
+  rateBtn.textContent = state.rate.toFixed(2).replace(/0$/,"").replace(/\.$/,".0") + "×";
+
+  // ---------- settings sheet ----------
+  function openSheet(){ overlay.classList.add("show"); sheet.classList.add("show"); }
+  function closeSheetFn(){ overlay.classList.remove("show"); sheet.classList.remove("show"); }
+  settingsBtn.addEventListener("click", openSheet);
+  overlay.addEventListener("click", closeSheetFn);
+  closeSheet.addEventListener("click", closeSheetFn);
+
+  function setEngine(engine){
+    state.engine = engine;
+    localStorage.setItem("aloud_engine", engine);
+    engineBrowserBtn.classList.toggle("active", engine === "browser");
+    engineElevenBtn.classList.toggle("active", engine === "eleven");
+    browserVoiceField.style.display = engine === "browser" ? "block" : "none";
+    elevenFields.classList.toggle("show", engine === "eleven");
+    engineLabel.textContent = engine === "browser" ? "Built-in voice" : "Premium voice";
+    stopSpeaking();
+  }
+  engineBrowserBtn.addEventListener("click", function(){ setEngine("browser"); });
+  engineElevenBtn.addEventListener("click", function(){ setEngine("eleven"); });
+  setEngine(state.engine);
+
+  voiceSelect.addEventListener("change", function(){
+    state.selectedVoiceName = voiceSelect.value;
+    localStorage.setItem("aloud_voice", state.selectedVoiceName);
+  });
+
+  elevenKeyInput.value = localStorage.getItem("aloud_eleven_key") || "";
+  elevenKeyInput.addEventListener("change", function(){
+    localStorage.setItem("aloud_eleven_key", elevenKeyInput.value.trim());
+  });
+
+  loadVoicesBtn.addEventListener("click", function(){
+    var key = elevenKeyInput.value.trim();
+    if (!key) { alert("Paste your API key first."); return; }
+    loadVoicesBtn.textContent = "Loading…";
+    fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } })
+      .then(function(res){
+        if (!res.ok) throw new Error("status " + res.status);
+        return res.json();
+      })
+      .then(function(data){
+        elevenVoiceSelect.innerHTML = "";
+        (data.voices || []).forEach(function(v){
+          var opt = document.createElement("option");
+          opt.value = v.voice_id;
+          opt.textContent = v.name;
+          elevenVoiceSelect.appendChild(opt);
+        });
+        loadVoicesBtn.textContent = "Load my voices";
+      })
+      .catch(function(err){
+        loadVoicesBtn.textContent = "Load my voices";
+        alert("Couldn't load voices (" + err.message + "). You can still type a voice ID directly by adding an option in settings, or check your key.");
+      });
+  });
+
+  // ---------- media session (lock screen controls, where supported) ----------
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.setActionHandler("play", function(){ resumeReading(); });
+    navigator.mediaSession.setActionHandler("pause", function(){ pauseReading(); });
+    navigator.mediaSession.setActionHandler("previoustrack", function(){ if (state.pageNum>1) renderPage(state.pageNum-1); });
+    navigator.mediaSession.setActionHandler("nexttrack", function(){ if (state.pageNum<state.numPages) renderPage(state.pageNum+1); });
+  }
+
+  window.addEventListener("resize", function(){
+    if (state.pdfDoc) renderPage(state.pageNum);
+  });
+
+  // ---------- init ----------
+  tryLoadBundledPdf();
+})();
+</script>
+</body>
+</html>
